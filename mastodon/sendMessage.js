@@ -16,10 +16,10 @@
  * limitations under the License.
  **/
 
-module.exports = function(RED) {
-  var Masto = require('mastodon')
+module.exports = function (RED) {
+  var Masto = require('mastodon');
   const fs = require('fs');
-  const {Duplex} = require('stream')
+  const { Duplex } = require('stream');
 
   // Helper function to create a file stream from image data
   function createFileStream(imageData) {
@@ -45,7 +45,7 @@ module.exports = function(RED) {
     if (description) {
       body.description = description;
     }
-    return M.post('media', body).then(resp => resp.data.id);
+    return M.post('media', body).then((resp) => resp.data.id);
   }
 
   function sendMessage(n) {
@@ -58,7 +58,7 @@ module.exports = function(RED) {
     var api_url;
     var node = this;
 
-    // Get varables from the node
+    // Get variables from the node
     this.access_token = n.access_token;
     this.visibility = n.visibility;
     this.timeout_ms = n.timeout_ms;
@@ -66,12 +66,12 @@ module.exports = function(RED) {
 
     // Status icon
     this.status({
-      fill: "grey",
-      shape: "dot",
-      text: "Waiting"
+      fill: 'grey',
+      shape: 'dot',
+      text: 'Waiting',
     });
 
-    this.on("input", function(msg) {
+    this.on('input', function (msg) {
       var M = new Masto({
         access_token: this.access_token,
         timeout_ms: this.timeout_ms, // optional HTTP request timeout to apply to all requests.
@@ -81,9 +81,14 @@ module.exports = function(RED) {
         // Check if image is an array
         if (Array.isArray(msg.payload.image)) {
           // Handle array of images
-          const uploadPromises = msg.payload.image.map(item => {
+          const uploadPromises = msg.payload.image.map((item) => {
             // Each item should be { image: buffer/filename, description: string }
-            if (item && typeof item === 'object' && !Array.isArray(item) && item.image) {
+            if (
+              item &&
+              typeof item === 'object' &&
+              !Array.isArray(item) &&
+              item.image
+            ) {
               return uploadImage(M, item.image, item.description);
             } else {
               // Fallback for simple array of buffers/filenames
@@ -91,111 +96,102 @@ module.exports = function(RED) {
             }
           });
 
-          Promise.all(uploadPromises).then(media_ids => {
-            const body = {
-              status: msg.payload.text,
-              visibility: msg.payload.visibility || this.visibility,
-              media_ids: media_ids
-            };
-            if (msg.payload.contentWarning) {
-              body.spoiler_text = msg.payload.contentWarning;
-            }
-            if (msg.payload.sensitive) {
-              body.sensitive = true;
-            }
-            return M.post('statuses', body);
-          }).then(() => {
-            this.status({
-              fill: "green",
-              shape: "dot",
-              text: "sent: " + msg.payload.text
+          Promise.all(uploadPromises)
+            .then((media_ids) => {
+              const body = {
+                status: msg.payload.text,
+                visibility: msg.payload.visibility || this.visibility,
+                media_ids: media_ids,
+              };
+              if (msg.payload.contentWarning) {
+                body.spoiler_text = msg.payload.contentWarning;
+              }
+              if (msg.payload.sensitive) {
+                body.sensitive = true;
+              }
+              return M.post('statuses', body);
+            })
+            .then(() => {
+              this.status({
+                fill: 'green',
+                shape: 'dot',
+                text: 'sent: ' + msg.payload.text,
+              });
+            })
+            .catch((err) => {
+              this.status({
+                fill: 'red',
+                shape: 'dot',
+                text: 'Error: ' + err.message,
+              });
             });
-          }).catch(err => {
-            this.status({
-              fill: "red",
-              shape: "dot",
-              text: "Error: " + err.message
-            });
-          });
         } else {
           // Handle single image (existing behavior)
-          var id;
-          var file = createFileStream(msg.payload.image);
-          if (!file) {
-            this.status({
-              fill: "red",
-              shape: "dot",
-              text: "Error: Invalid image data"
+          uploadImage(M, msg.payload.image, msg.payload.description)
+            .then((id) => {
+              const body = {
+                status: msg.payload.text,
+                visibility: msg.payload.visibility || this.visibility,
+                media_ids: [id],
+              };
+              if (msg.payload.contentWarning) {
+                body.spoiler_text = msg.payload.contentWarning;
+              }
+              if (msg.payload.sensitive) {
+                body.sensitive = true;
+              }
+              return M.post('statuses', body);
+            })
+            .then(() => {
+              this.status({
+                fill: 'green',
+                shape: 'dot',
+                text: 'sent: ' + msg.payload.text,
+              });
+            })
+            .catch((err) => {
+              this.status({
+                fill: 'red',
+                shape: 'dot',
+                text: 'Error: ' + err.message,
+              });
             });
-            return;
-          }
-          const body = {
-            file
-          }
-          if (msg.payload.description) {
-            body.description = msg.payload.description
-          }
-          M.post('media', body).then(resp => {
-            id = resp.data.id;
-            const body = {
-              status: msg.payload.text,
-              visibility: msg.payload.visibility || this.visibility,
-              media_ids: [id]
-            }
-            if (msg.payload.contentWarning) {
-              body.spoiler_text = msg.payload.contentWarning
-            }
-            if (msg.payload.sensitive) {
-              body.sensitive = true
-            }
-            return M.post('statuses', body);
-          }).then(() => {
-            this.status({
-              fill: "green",
-              shape: "dot",
-              text: "sent: " + msg.payload.text
-            });
-          }).catch(err => {
-            this.status({
-              fill: "red",
-              shape: "dot",
-              text: "Error: " + err.message
-            });
-          });
         }
       } else {
         const body = {
           status: msg.payload.text,
-          visibility: msg.payload.visibility || this.visibility
-        }
+          visibility: msg.payload.visibility || this.visibility,
+        };
         if (msg.payload.contentWarning) {
-          body.spoiler_text = msg.payload.contentWarning
+          body.spoiler_text = msg.payload.contentWarning;
         }
         if (msg.payload.sensitive) {
-          body.sensitive = true
+          body.sensitive = true;
         }
-        M.post('statuses', body).then(() => {
-          this.status({
-            fill: "green",
-            shape: "dot",
-            text: "sent: " + msg.payload.text
+        M.post('statuses', body)
+          .then(() => {
+            this.status({
+              fill: 'green',
+              shape: 'dot',
+              text: 'sent: ' + msg.payload.text,
+            });
+          })
+          .catch((err) => {
+            this.status({
+              fill: 'red',
+              shape: 'dot',
+              text: 'Error: ' + err.message,
+            });
           });
-        }).catch(err => {
-          this.status({
-            fill: "red",
-            shape: "dot",
-            text: "Error: " + err.message
-          });
-        });
       }
     });
 
-    this.on("close", function() {
+    this.on('close', function () {
       try {
         this.status({
-          fill: "red",
-          shape: "dot",
-          text: "Stopped"
+          fill: 'red',
+          shape: 'dot',
+          text: 'Stopped',
         });
       } catch (err) {
         console.log(err);
@@ -205,5 +201,5 @@ module.exports = function(RED) {
 
   // Register the node by name. This must be called before overriding any of the
   // Node functions.
-  RED.nodes.registerType("sendMessage", sendMessage);
-}
+  RED.nodes.registerType('sendMessage', sendMessage);
+};
