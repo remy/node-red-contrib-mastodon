@@ -103,7 +103,8 @@ module.exports = function(RED) {
             if (msg.payload.sensitive) {
               body.sensitive = true;
             }
-            M.post('statuses', body);
+            return M.post('statuses', body);
+          }).then(() => {
             this.status({
               fill: "green",
               shape: "dot",
@@ -139,11 +140,18 @@ module.exports = function(RED) {
             if (msg.payload.sensitive) {
               body.sensitive = true
             }
-            M.post('statuses', body);
+            return M.post('statuses', body);
+          }).then(() => {
             this.status({
               fill: "green",
               shape: "dot",
               text: "sent: " + msg.payload.text
+            });
+          }).catch(err => {
+            this.status({
+              fill: "red",
+              shape: "dot",
+              text: "Error: " + err.message
             });
           });
         }
