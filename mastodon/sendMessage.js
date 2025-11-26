@@ -83,7 +83,7 @@ module.exports = function(RED) {
           // Handle array of images
           const uploadPromises = msg.payload.image.map(item => {
             // Each item should be { image: buffer/filename, description: string }
-            if (typeof item === 'object' && item.image) {
+            if (item && typeof item === 'object' && !Array.isArray(item) && item.image) {
               return uploadImage(M, item.image, item.description);
             } else {
               // Fallback for simple array of buffers/filenames
@@ -121,6 +121,14 @@ module.exports = function(RED) {
           // Handle single image (existing behavior)
           var id;
           var file = createFileStream(msg.payload.image);
+          if (!file) {
+            this.status({
+              fill: "red",
+              shape: "dot",
+              text: "Error: Invalid image data"
+            });
+            return;
+          }
           const body = {
             file
           }
@@ -166,11 +174,18 @@ module.exports = function(RED) {
         if (msg.payload.sensitive) {
           body.sensitive = true
         }
-        M.post('statuses', body);
-        this.status({
-          fill: "green",
-          shape: "dot",
-          text: "sent: " + msg.payload.text
+        M.post('statuses', body).then(() => {
+          this.status({
+            fill: "green",
+            shape: "dot",
+            text: "sent: " + msg.payload.text
+          });
+        }).catch(err => {
+          this.status({
+            fill: "red",
+            shape: "dot",
+            text: "Error: " + err.message
+          });
         });
       }
     });
