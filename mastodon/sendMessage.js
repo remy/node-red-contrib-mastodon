@@ -21,6 +21,33 @@ module.exports = function(RED) {
   const fs = require('fs');
   const {Duplex} = require('stream')
 
+  // Helper function to create a file stream from image data
+  function createFileStream(imageData) {
+    if (typeof imageData === 'string') {
+      return fs.createReadStream(imageData);
+    } else if (typeof imageData === 'object' && Buffer.isBuffer(imageData)) {
+      const stream = new Duplex();
+      stream.path = '/tmp/image';
+      stream.push(imageData);
+      stream.push(null);
+      return stream;
+    }
+    return null;
+  }
+
+  // Helper function to upload a single image
+  function uploadImage(M, imageData, description) {
+    const file = createFileStream(imageData);
+    if (!file) {
+      return Promise.reject(new Error('Invalid image data'));
+    }
+    const body = { file };
+    if (description) {
+      body.description = description;
+    }
+    return M.post('media', body).then(resp => resp.data.id);
+  }
+
   function sendMessage(n) {
     RED.nodes.createNode(this, n);
 
@@ -51,43 +78,75 @@ module.exports = function(RED) {
         api_url: this.api_url, // optional, defaults to https://mastodon.social/api/v1/
       });
       if (msg.payload.hasOwnProperty('image')) {
-        var id;
-        var file
-        if (typeof msg.payload.image === 'string') {
-          file = fs.createReadStream(msg.payload.image)
-        } else if (typeof msg.payload.image === 'object' && Buffer.isBuffer(msg.payload.image)) {
-          console.log("image is buffer")
-          file = new Duplex()
-          file.path = '/tmp/image'
-          file.push(msg.payload.image)
-          file.push(null)
-        }
-        const body = {
-          file
-        }
-        if (msg.payload.description) {
-          body.description = msg.payload.description
-        }
-        M.post('media', body).then(resp => {
-          id = resp.data.id;
-          const body = {
-            status: msg.payload.text,
-            visibility: msg.payload.visibility || this.visibility,
-            media_ids: [id]
-          }
-          if (msg.payload.contentWarning) {
-            body.spoiler_text = msg.payload.contentWarning
-          }
-          if (msg.payload.sensitive) {
-            body.sensitive = true
-          }
-          M.post('statuses', body);
-          this.status({
-            fill: "green",
-            shape: "dot",
-            text: "sent: " + msg.payload.text
+        // Check if image is an array
+        if (Array.isArray(msg.payload.image)) {
+          // Handle array of images
+          const uploadPromises = msg.payload.image.map(item => {
+            // Each item should be { image: buffer/filename, description: string }
+            if (typeof item === 'object' && item.image) {
+              return uploadImage(M, item.image, item.description);
+            } else {
+              // Fallback for simple array of buffers/filenames
+              return uploadImage(M, item, null);
+            }
           });
-        });
+
+          Promise.all(uploadPromises).then(media_ids => {
+            const body = {
+              status: msg.payload.text,
+              visibility: msg.payload.visibility || this.visibility,
+              media_ids: media_ids
+            };
+            if (msg.payload.contentWarning) {
+              body.spoiler_text = msg.payload.contentWarning;
+            }
+            if (msg.payload.sensitive) {
+              body.sensitive = true;
+            }
+            M.post('statuses', body);
+            this.status({
+              fill: "green",
+              shape: "dot",
+              text: "sent: " + msg.payload.text
+            });
+          }).catch(err => {
+            this.status({
+              fill: "red",
+              shape: "dot",
+              text: "Error: " + err.message
+            });
+          });
+        } else {
+          // Handle single image (existing behavior)
+          var id;
+          var file = createFileStream(msg.payload.image);
+          const body = {
+            file
+          }
+          if (msg.payload.description) {
+            body.description = msg.payload.description
+          }
+          M.post('media', body).then(resp => {
+            id = resp.data.id;
+            const body = {
+              status: msg.payload.text,
+              visibility: msg.payload.visibility || this.visibility,
+              media_ids: [id]
+            }
+            if (msg.payload.contentWarning) {
+              body.spoiler_text = msg.payload.contentWarning
+            }
+            if (msg.payload.sensitive) {
+              body.sensitive = true
+            }
+            M.post('statuses', body);
+            this.status({
+              fill: "green",
+              shape: "dot",
+              text: "sent: " + msg.payload.text
+            });
+          });
+        }
       } else {
         const body = {
           status: msg.payload.text,

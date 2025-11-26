@@ -43,6 +43,10 @@
     <p>put the text of the post in msg.payload.text, and put the media in msg.payload.image if you have one</p>
     <p>msg.payload.image can be a path to a local file or a buffer containing the image</p>
     <p>msg.payload.description can also hold the image description to be used as the Alt Text</p>
+    <h2>Multiple Images</h2>
+    <p>msg.payload.image can also be an array to upload multiple images at once</p>
+    <p>Each array item should be an object with { image: buffer/filename, description: string } to include alt text for each image</p>
+    <p>Example: msg.payload.image = [{ image: Buffer.from(...), description: "First image" }, { image: "/path/to/file.jpg", description: "Second image" }]</p>
 </script>
 
 <!-- Finally, the node type is registered along with all of its properties   -->
